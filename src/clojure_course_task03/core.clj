@@ -205,7 +205,17 @@
 ;; TBD: Implement the following macros
 ;;
 
-(defmacro group [name & body]
+(defn get-tables-def [group-name tables]
+  (let [var-name (str group-name "-tables")
+        table-names (map #(name %) tables)]
+    '(def var-name table-names)))
+
+(defn get-fields-defs [group-name tables-configurations]
+  (let [var-names (map #(str "-" group-name "-" (name (first %)) "-fields") tables-configurations)
+        fields (map #(map (fn [field] (keyword field)) (last %)) tables-configurations)]
+    (map #('(def % %)) var-names fields)))
+
+(defmacro group [name & body]  
   ;; Пример
   ;; (group Agent
   ;;      proposal -> [person, phone, address, price]
@@ -216,7 +226,10 @@
   ;; 3) Создает следующие функции
   ;;    (select-agent-proposal) ;; select person, phone, address, price from proposal;
   ;;    (select-agent-agents)  ;; select clients_id, proposal_id, agent from agents;
-  )
+  (let [group-name# (lower-case (name name))
+        tables# (take-nth 3 body)
+        tables-configurations# (partition 3 body)]
+    (concat (list 'do (get-tables-def group-name# tables#)) (get-fields-defs group-name# tables-configurations#))))
 
 (defmacro user [name & body]
   ;; Пример
@@ -224,6 +237,10 @@
   ;;     (belongs-to Agent))
   ;; Создает переменные Ivanov-proposal-fields-var = [:person, :phone, :address, :price]
   ;; и Ivanov-agents-fields-var = [:clients_id, :proposal_id, :agent]
+  (let [user-name# (name name)
+        group-names# (map (fn [group] (name group)) (rest body))
+        
+        group-vars-names# (map (fn [group-name] (str "-" group-name 
   )
 
 (defmacro with-user [name & body]
