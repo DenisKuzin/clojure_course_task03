@@ -204,7 +204,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; TBD: Implement the following macros
 ;;
-
+(comment
 (defn get-tables-def [group-name tables]
   (let [var-name (str group-name "-tables")
         table-names (map #(name %) tables)]
@@ -237,8 +237,7 @@
         table-vars (map #(symbol %) table-var-names) ; (Agent-tables, Operator-tables, Director-tables)
         fields-var-names (map (fn [group-name table-var] (map #(str group-name "-" % "-fields") ~table-var)) group-names table-vars) ; ("Agent-proposal-fields", "Agent-agents-fields", "Operator-proposal-fields")
         fields-vars (map #(symbol %) fields-var-names) ; (Agent-proposal-fields, Agent-agents-fields, Operator-proposal-fields)
-                
-))
+                ]))
 
 (defmacro user [name & body]
   ;; Пример
@@ -249,6 +248,43 @@
   (let [user-name# (name name)
         groups# (rest body)]
     (list 'do (get-user-defs user-name# groups#))))
+)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defmacro group [name & body]
+  ;; Пример
+  ;; (group Agent
+  ;;      proposal -> [person, phone, address, price]
+  ;;      agents -> [clients_id, proposal_id, agent])
+  ;; 1) Создает группу Agent
+  ;; 2) Запоминает, какие таблицы (и какие колонки в таблицах)
+  ;;    разрешены в данной группе.
+  ;; 3) Создает следующие функции
+  ;;    (select-agent-proposal) ;; select person, phone, address, price from proposal;
+  ;;    (select-agent-agents)  ;; select clients_id, proposal_id, agent from agents;
+  )
+
+(def Agent-proposal-fields [person, phone, address, price])
+(def Agent-agents-fields [clients_id, proposal_id, agent])
+
+(defn get-user-defs [name groups]
+  ())
+(defmacro user [name & body]
+  ;; Пример
+  ;; (user Ivanov
+  ;;     (belongs-to Agent))
+  ;; Создает переменные Ivanov-proposal-fields-var = [:person, :phone, :address, :price]
+  ;; и Ivanov-agents-fields-var = [:clients_id, :proposal_id, :agent]
+  (list 'do
+        (list 'def 'Ivanov-proposal-fields-var '[:person, :phone, :address, :price])
+        (list 'def 'Ivanov-agents-fields-var '[:clients_id, :proposal_id, :agent])))
+
+(defn get-fields-var-by-name [name]
+  (let [nsmap (ns-map *ns*)
+        var-regex (re-pattern (str "^" name "\\S+-fields-var$"))
+        user-vars (remove #(nil? (re-matches var-regex (str %))) (keys nsmap))
+        new-vars (map #(symbol (re-find (re-matcher (re-pattern "\\w+-fields-var$") (str %)))) user-vars)
+        fields (map #(eval (symbol (str %))) user-vars)]
+    (vec (interleave new-vars fields))))
 
 (defmacro with-user [name & body]
   ;; Пример
@@ -260,4 +296,11 @@
   ;;    proposal-fields-var и agents-fields-var.
   ;;    Таким образом, функция select, вызванная внутри with-user, получает
   ;;    доступ ко всем необходимым переменным вида <table-name>-fields-var.
-  )
+  (list
+   'let
+   (get-fields-var-by-name name)
+   (first body)))
+     
+
+(defn select-agent-agents []
+  "SELECT clients_id,proposal_id,agent FROM agents ")
