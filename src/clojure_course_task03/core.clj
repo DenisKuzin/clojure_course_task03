@@ -205,6 +205,17 @@
 ;; TBD: Implement the following macros
 ;;
 
+(defn get-group-defs [group tables fields]
+  (let [var-names (map #(str group "-" % "-fields") tables)
+        keyword-fields (map #(vec (map (fn [field] (keyword field)) %)) fields)]
+    (partition 3 (interleave (repeat 'def) (map #(symbol %) var-names) keyword-fields))))
+
+(defn get-group-defns [group tables fields]
+  (let [fn-names (map #(str "select-" (clojure.string/lower-case group) "-" %) tables)
+        fields (map #(str "SELECT " (clojure.string/join "," %) " FROM ") fields)
+        selects (map #(str %1 %2 " ") fields tables)]
+    (partition 4 (interleave (repeat 'defn) (map #(symbol %) fn-names) (repeat '[]) selects))))
+
 (defmacro group [name & body]
   ;; Пример
   ;; (group Agent
@@ -216,15 +227,10 @@
   ;; 3) Создает следующие функции
   ;;    (select-agent-proposal) ;; select person, phone, address, price from proposal;
   ;;    (select-agent-agents)  ;; select clients_id, proposal_id, agent from agents;
-  )
-
-(def Agent-proposal-fields [:person, :phone, :address, :price])
-(def Agent-agents-fields [:clients_id, :proposal_id, :agent])
-(def Operator-proposal-fields [:all])
-(def Operator-clients-fields [:all])
-(def Director-proposal-fields [:all])
-(def Director-clients-fields [:all])
-(def Director-agents-fields [:all])
+  (concat
+   (list 'do)
+   (get-group-defs name (take-nth 3 body) (take-nth 3 (drop 2 body)))
+   (get-group-defns name (take-nth 3 body)(take-nth 3 (drop 2 body)))))
 
 (defn get-group-vars [group]
   (let [nsmap (ns-map *ns*)
@@ -234,7 +240,7 @@
 
 (defn get-table-fields [table groups]
   (let [nsmap (ns-map *ns*)
-        var-regex (re-pattern (str "-" table "-fields$"))
+        var-regex (re-pattern (str "\\S+-" table "-fields$"))
         group-vars (remove #(nil? (re-matches var-regex (str %))) groups)]
     (map #(eval (symbol (str %))) group-vars)))
 
@@ -242,10 +248,12 @@
   (let [nsmap (ns-map *ns*)
         group-vars (flatten (map get-group-vars groups))
         tables (distinct (map #(clojure.string/join (pop (vec (subs (re-find (re-matcher (re-pattern "-\\w+-") (str %))) 1)))) group-vars))
-        fields (map get-table-fields tables)])
+        fields (map #(get-table-fields % group-vars) tables)
+        merged-fields (map #(reduce concat %) fields)
+        cleaned-fields (map #(if (some #{:all} %) '[:all] (vec %)) merged-fields)]
+    (partition 3 (interleave (repeat 'def) (map #(symbol (str name "-" % "-fields-var")) tables) cleaned-fields))
+    )
   )
-
-        
 
 (defmacro user [name & body]
   ;; Пример
@@ -253,10 +261,7 @@
   ;;     (belongs-to Agent))
   ;; Создает переменные Ivanov-proposal-fields-var = [:person, :phone, :address, :price]
   ;; и Ivanov-agents-fields-var = [:clients_id, :proposal_id, :agent]
-  (concat (list 'do) (get-user-defs name (rest body))))
-
-;;        (list 'def 'Ivanov-proposal-fields-var '[:person, :phone, :address, :price])
-;;        (list 'def 'Ivanov-agents-fields-var '[:clients_id, :proposal_id, :agent])))
+  (concat (list 'do) (get-user-defs name (rest (first body)))))
 
 (defn get-fields-var-by-name [name]
   (let [nsmap (ns-map *ns*)
@@ -280,7 +285,3 @@
    'let
    (get-fields-var-by-name name)
    (first body)))
-     
-
-(defn select-agent-agents []
-  "SELECT clients_id,proposal_id,agent FROM agents ")
